@@ -19,7 +19,7 @@ function toast(t) {
   document.body.appendChild(d); setTimeout(() => d.remove(), 1800);
 }
 const quando = s => s ? s.slice(8, 10) + "/" + s.slice(5, 7) + " " + s.slice(11) : "";
-const nomeDi = chi => chi === "matteo" ? "Matteo" : chi === "whiz" ? "Whiz" : chi;
+const nomeDi = chi => ({ matteo: "Matteo", whiz: "Whiz", monica: "Monica" })[chi] || chi;
 
 /* ---------------- mini markdown (solo quello che serve nei file cliente) */
 function inline(s) {
