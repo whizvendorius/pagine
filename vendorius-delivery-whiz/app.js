@@ -171,7 +171,7 @@ function tOverview(el, d) {
         <span class="num">${i + 1}</span>
         <div><h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
           ${q.se_si ? `<div class="si"><b>Sì =</b> ${inline(q.se_si)}</div>` : ""}
-          ${r ? `<div class="by">${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}</div>` : ""}</div>
+          ${r ? `<div class="by">${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}${q.risposta.nota ? ` · ${esc(q.risposta.nota)}` : ""}</div>` : ""}</div>
         <div class="yn"><button class="si ${r === "si" ? "on" : ""}" data-r="si">SÌ</button><button class="no ${r === "no" ? "on" : ""}" data-r="no">NO</button></div>
       </div>`; }).join("") || `<div class="empty">Nessuna domanda aperta.</div>`}</div>
   </section>

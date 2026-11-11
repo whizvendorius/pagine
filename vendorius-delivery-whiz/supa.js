@@ -1,0 +1,1 @@
+window.SUPA={"url": "https://aoqobgtyxyioctoecypb.supabase.co", "anon": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFvcW9iZ3R5eHlpb2N0b2VjeXBiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0MDM4MDgsImV4cCI6MjEwOTk3OTgwOH0.X5X5btvZNFQmNgUan5JT9q3hM_zfRkPxP-0nGMyENgY", "chi_default": "matteo"};

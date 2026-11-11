@@ -1,12 +1,75 @@
-/* Versione pubblicata (GitHub Pages): niente server. Le risposte restano nel browser di Matteo
-   e partono verso Whiz col tasto "Manda a Whiz" (WhatsApp). Va caricato DOPO dati.js e PRIMA di app.js. */
+/* Versione pubblicata (GitHub Pages). Risposte, esiti e note vivono su Supabase (progetto Vendorius)
+   e arrivano in diretta a tutti quelli che hanno la pagina aperta.
+   Ordine script: supabase.js → dati.js → statico.js → app.js.  Chi sei: ?chi=whiz|matteo|monica */
 (() => {
-  const D = window.DATI, KEY = "vc-risposte-v1";
-  let st; try { st = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { st = {}; }
-  st.risposte ||= {}; st.esiti ||= {}; st.note ||= {};
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch {} };
+  const D = window.DATI, C = window.SUPA, KEY = "vc-risposte-v1";
+  const NOMI = { whiz: "Whiz", matteo: "Matteo", monica: "Monica" };
+  const qs = new URLSearchParams(location.search);
+  let chi = (qs.get("chi") || "").toLowerCase();
+  try { if (NOMI[chi]) localStorage.setItem("vc-chi", chi); else chi = localStorage.getItem("vc-chi") || C.chi_default || ""; } catch {}
+  if (!NOMI[chi]) chi = C.chi_default || "matteo";
+  const sb = window.supabase.createClient(C.url, C.anon);
+  const st = { risposte: {}, esiti: {}, note: {} };
   const ora = () => { const d = new Date(), p = n => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+
+  const put = {
+    risposte: r => (st.risposte[r.slug] ||= {})[r.chiave] = r,
+    esiti: r => (st.esiti[r.slug] ||= {})[r.sezione] = r,
+    note: r => { const N = st.note[r.slug] ||= []; const i = N.findIndex(n => n.id == r.id); i < 0 ? N.push(r) : N[i] = r; N.sort((a, b) => a.id - b.id); },
+  };
+  const del = {
+    risposte: r => { delete (st.risposte[r.slug] || {})[r.chiave]; },
+    esiti: r => { delete (st.esiti[r.slug] || {})[r.sezione]; },
+    note: r => { for (const s in st.note) st.note[s] = st.note[s].filter(n => n.id != r.id); },
+  };
+
+  async function carica() {
+    for (const t of ["risposte", "esiti", "note"]) {
+      const { data, error } = await sb.from(t).select("*");
+      if (error) throw new Error("database: " + error.message);
+      data.forEach(put[t]);
+    }
+  }
+  /* risposte rimaste solo nel browser (versione vecchia) → nel database, una volta sola */
+  async function svuotaVecchie() {
+    let old; try { old = JSON.parse(localStorage.getItem(KEY) || "null"); } catch {}
+    if (!old) return;
+    const R = [], E = [], N = [];
+    for (const s in old.risposte || {}) for (const k in old.risposte[s]) if (!st.risposte[s]?.[k]) R.push({ slug: s, ...old.risposte[s][k] });
+    for (const s in old.esiti || {}) for (const k in old.esiti[s]) if (!st.esiti[s]?.[k]) E.push({ slug: s, ...old.esiti[s][k] });
+    for (const s in old.note || {}) for (const n of old.note[s]) if (!(st.note[s] || []).some(x => x.id == n.id)) N.push({ slug: s, ...n });
+    if (R.length) await sb.from("risposte").upsert(R, { ignoreDuplicates: true });
+    if (E.length) await sb.from("esiti").upsert(E, { ignoreDuplicates: true });
+    if (N.length) await sb.from("note").upsert(N, { ignoreDuplicates: true });
+    R.forEach(put.risposte); E.forEach(put.esiti); N.forEach(put.note);
+    try { localStorage.setItem(KEY + "-inviate", localStorage.getItem(KEY)); localStorage.removeItem(KEY); } catch {}
+  }
+  const pronto = carica().then(svuotaVecchie);
+
+  /* ---- diretta: ogni modifica di chiunque arriva qui */
+  let attesa = null;
+  function ridisegna() {
+    clearTimeout(attesa);
+    const a = document.activeElement;
+    if (a && /TEXTAREA|INPUT/.test(a.tagName) && a.value) { attesa = setTimeout(ridisegna, 1500); return; }
+    attesa = setTimeout(() => { if (window.route) { route.keep = true; route(); } }, 120);
+  }
+  sb.channel("cockpit").on("postgres_changes", { event: "*", schema: "public" }, p => {
+    const t = p.table, prima = JSON.stringify(st);
+    if (!put[t]) return;
+    if (p.eventType === "DELETE") del[t](p.old); else put[t](p.new);
+    if (JSON.stringify(st) === prima) return;
+    const da = p.new?.chi || p.new?.autore;
+    if (da && da !== chi && window.toast) toast(`${NOMI[da] || da} ha aggiornato ${D.clienti[p.new.slug]?.nome || ""}`);
+    ridisegna();
+  }).subscribe();
+
+  async function scrivi(t, riga, cancella) {
+    const q = cancella ? sb.from(t).delete().match(cancella) : sb.from(t).upsert(riga);
+    const { error } = await q;
+    if (error) throw new Error("salvataggio non riuscito: " + error.message);
+  }
 
   function det(slug) {
     const d = JSON.parse(JSON.stringify(D.clienti[slug]));
@@ -19,53 +82,38 @@
     return d;
   }
   const ok = j => new Response(JSON.stringify(j), { status: 200, headers: { "Content-Type": "application/json" } });
+  const ko = e => new Response(JSON.stringify({ errore: e.message }), { status: 500, headers: { "Content-Type": "application/json" } });
   const _fetch = window.fetch.bind(window);
   window.fetch = async (url, opt = {}) => {
     const u = new URL(url, location.href);
     const m = u.pathname.match(/\/api\/(.*)$/);
     if (!m) return _fetch(url, opt);
+    try { await pronto; } catch (e) { return ko(e); }
     const p = m[1].split("/"), body = opt.body ? JSON.parse(opt.body) : null;
-    if (p[0] === "me") return ok({ chi: "matteo", nome: "Matteo" });
+    if (p[0] === "me") return ok({ chi, nome: NOMI[chi] });
     if (p[0] === "clienti" && !p[1]) return ok(D.ordine.map(s => { const d = det(s);
       for (const k of ["overview", "copy", "note", "liste", "esempio"]) delete d[k]; d.altri = 0; return d; }));
     const slug = p[1];
     if (!D.clienti[slug]) return new Response("{}", { status: 404 });
     if (!p[2]) return ok(det(slug));
     if (p[2] === "lista") return ok(D.liste[slug]);
-    if (p[2] === "risposta") { const R = st.risposte[slug] ||= {};
-      if (body.risposta) R[body.chiave] = { chiave: body.chiave, domanda: body.domanda, risposta: body.risposta, chi: "matteo", quando: ora() };
-      else delete R[body.chiave]; save(); bump(); return ok({ ok: true }); }
-    if (p[2] === "esito") { const E = st.esiti[slug] ||= {};
-      if (body.esito) E[body.sezione] = { sezione: body.sezione, esito: body.esito, nota: body.nota || "", chi: "matteo", quando: ora() };
-      else delete E[body.sezione]; save(); bump(); return ok({ ok: true }); }
-    if (p[2] === "nota") { const N = st.note[slug] ||= [];
-      N.push({ id: Date.now(), sezione: body.sezione, ancora: body.ancora, ancora_label: body.ancora_label, testo: body.testo, autore: "matteo", creato: ora(), risolta: 0 });
-      save(); bump(); return ok({ ok: true }); }
+    try {
+      if (p[2] === "risposta") {
+        if (body.risposta) { const r = { slug, chiave: body.chiave, domanda: body.domanda, risposta: body.risposta, chi, quando: ora() };
+          await scrivi("risposte", r); put.risposte(r); }
+        else { await scrivi("risposte", null, { slug, chiave: body.chiave }); del.risposte({ slug, chiave: body.chiave }); }
+      } else if (p[2] === "esito") {
+        if (body.esito) { const r = { slug, sezione: body.sezione, esito: body.esito, nota: body.nota || "", chi, quando: ora() };
+          await scrivi("esiti", r); put.esiti(r); }
+        else { await scrivi("esiti", null, { slug, sezione: body.sezione }); del.esiti({ slug, sezione: body.sezione }); }
+      } else if (p[2] === "nota") {
+        const r = { id: Date.now(), slug, sezione: body.sezione, ancora: body.ancora, ancora_label: body.ancora_label, testo: body.testo, autore: chi, creato: ora(), risolta: 0 };
+        await scrivi("note", r); put.note(r);
+      } else if (p[2] === "nota_risolvi") {
+        const n = (st.note[slug] || []).find(x => x.id == body.id);
+        if (n) { const r = { ...n, risolta: body.risolta ? 1 : 0 }; await scrivi("note", r); put.note(r); }
+      }
+    } catch (e) { return ko(e); }
     return ok({ ok: true });
   };
-
-  /* ---- tasto "Manda a Whiz" */
-  function testo() {
-    const out = ["Ciao Whiz, ecco le mie risposte dal cockpit:", ""];
-    for (const s of D.ordine) {
-      const d = det(s), righe = [];
-      (d.overview?.domande || []).forEach((q, i) => q.risposta && righe.push(`${i + 1}. ${q.domanda.replace(/\*\*/g, "")} → ${q.risposta.risposta === "si" ? "SÌ" : "NO"}`));
-      for (const [sez, e] of Object.entries(d.esiti)) righe.push(`${sez === "lista" ? "Lista" : "Copy"}: ${e.esito === "approvata" ? "APPROVATO ✓" : "DA RIVEDERE ✗"}${e.nota ? ` (nota: ${e.nota})` : ""}`);
-      d.note.forEach(n => righe.push(`Nota su ${n.ancora_label}: ${n.testo}`));
-      if (righe.length) out.push(`*${d.nome}*`, ...righe, "");
-    }
-    return out.length > 2 ? out.join("\n") : "";
-  }
-  function quante() { return D.ordine.reduce((n, s) => { const d = det(s); return n + d.domande_fatte + d.valutate + d.note.length; }, 0); }
-  const btn = document.createElement("button");
-  btn.className = "sendwa";
-  btn.onclick = async () => {
-    const t = testo();
-    if (!t) { alertSoft("Ancora nessuna risposta da mandare."); return; }
-    try { await navigator.clipboard.writeText(t); } catch {}
-    window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank");
-  };
-  function alertSoft(t) { const d = document.createElement("div"); d.className = "toast"; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 2000); }
-  function bump() { const n = quante(); btn.innerHTML = `Manda le risposte a Whiz <i>${n}</i>`; btn.classList.toggle("on", n > 0); }
-  /* tasto tolto su richiesta di Whiz (10/11) */
 })();
