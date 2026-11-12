@@ -145,7 +145,7 @@ async function pHome() {
 function richieste(RQ) {
   if (!RQ.length) return "";
   const f = RQ.filter(q => q.risposta).length, n = RQ.length - f;
-  return `<section class="rq"><div class="rqh"><span class="tag">Da Whiz per ${tutto() ? "Matteo e Monica" : nomeDi(io())}</span><b>${n ? `${n} ${n === 1 ? "cosa che mi serve" : "cose che mi servono"} da te` : "Fatto, grazie!"}</b><span class="cnt">${f} di ${RQ.length}</span></div>
+  return `<section class="rq"><div class="rqh"><span class="tag">Da Whiz per ${tutto() ? "Matteo e Monica" : nomeDi(io())}</span>${n ? "" : "<b>Fatto, grazie!</b>"}</div>
     <div class="qs">${RQ.map((q, i) => { const r = q.risposta?.risposta;
       return `<div class="q ${r ? "answered" : ""}" data-k="${q.chiave}"><span class="num">${i + 1}</span>
         <div>${tutto() ? `<span class="per">per ${nomeDi(q.per || "matteo")}</span>` : ""}<h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
