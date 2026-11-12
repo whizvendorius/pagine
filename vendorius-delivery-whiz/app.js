@@ -94,7 +94,26 @@ async function pHome() {
   shell(`<div class="grid">${"<div class='skel'></div>".repeat(6)}</div>`);
   S.clienti = await api("api/clienti");
   const C = S.clienti;
-  shell(`<section class="grid" style="margin-top:40px">${C.map(card).join("")}</section>`);
+  let RQ = []; try { RQ = await api("api/richieste"); } catch {}
+  shell(`${richieste(RQ)}<section class="grid" style="margin-top:${RQ.length ? 28 : 40}px">${C.map(card).join("")}</section>`);
+  $$(".rq .q").forEach(qel => $$("button", qel).forEach(b => b.onclick = async () => {
+    const q = RQ.find(x => x.chiave === qel.dataset.k);
+    const nuova = q.risposta?.risposta === b.dataset.r ? "" : b.dataset.r;
+    await api("api/clienti/_vendorius/risposta", { chiave: q.chiave, domanda: q.domanda, risposta: nuova });
+    toast(nuova ? `Salvato: ${nuova === "si" ? "Sì" : "No"}` : "Risposta tolta"); route();
+  }));
+}
+/* richieste generali a Matteo (non legate a un cliente), in evidenza in cima */
+function richieste(RQ) {
+  if (!RQ.length) return "";
+  const f = RQ.filter(q => q.risposta).length, n = RQ.length - f;
+  return `<section class="rq"><div class="rqh"><span class="tag">Da Whiz per Matteo</span><b>${n ? `${n} ${n === 1 ? "cosa che mi serve" : "cose che mi servono"} da te` : "Fatto, grazie!"}</b><span class="cnt">${f} di ${RQ.length}</span></div>
+    <div class="qs">${RQ.map((q, i) => { const r = q.risposta?.risposta;
+      return `<div class="q ${r ? "answered" : ""}" data-k="${q.chiave}"><span class="num">${i + 1}</span>
+        <div><h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
+          ${q.se_si ? `<div class="si"><b>Sì =</b> ${inline(q.se_si)}</div>` : ""}
+          ${r ? `<div class="by">${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}</div>` : ""}</div>
+        <div class="yn"><button class="si ${r === "si" ? "on" : ""}" data-r="si">SÌ</button><button class="no ${r === "no" ? "on" : ""}" data-r="no">NO</button></div></div>`; }).join("")}</div></section>`;
 }
 function card(c) {
   const done = finito(c);

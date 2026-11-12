@@ -93,8 +93,10 @@
     if (p[0] === "me") return ok({ chi, nome: NOMI[chi] });
     if (p[0] === "clienti" && !p[1]) return ok(D.ordine.map(s => { const d = det(s);
       for (const k of ["overview", "copy", "note", "liste", "esempio"]) delete d[k]; d.altri = 0; return d; }));
+    if (p[0] === "richieste") { const R = st.risposte._vendorius || {};
+      return ok((D.richieste || []).map(q => ({ ...q, risposta: R[q.chiave] || null }))); }
     const slug = p[1];
-    if (!D.clienti[slug]) return new Response("{}", { status: 404 });
+    if (!D.clienti[slug] && slug !== "_vendorius") return new Response("{}", { status: 404 });
     if (!p[2]) return ok(det(slug));
     if (p[2] === "lista") return ok(D.liste[slug]);
     try {
