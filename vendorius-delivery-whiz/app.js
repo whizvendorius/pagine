@@ -86,7 +86,40 @@ function sopBar(sop, big) {
   if (big) return bar + `<div class="soplabels">${sop.map(s => `<span class="${s.stato}">${s.stato === "fatto" ? "✓ " : ""}${esc(s.nome)}</span>`).join("")}</div>`;
   return bar + `<div class="sopl"><span>Step SOP <b>${(i >= 0 ? i : done - 1) + 1}/7</b></span><b>${esc(cur?.nome || "")}</b></div>`;
 }
-const finito = c => c.domande_fatte >= c.domande_tot && c.valutate >= c.da_valutare.length;
+/* ---------------- chi guarda: Matteo vede le sue cose, Monica quelle da chiedere/mandare al cliente, Whiz tutto */
+const io = () => S.me?.chi || "matteo";
+const tutto = () => io() === "whiz";
+const mia = q => tutto() || (q.per || "matteo") === io();
+const NOME_SEZ = { lista: "Lista", copy: "Copy", copy_cliente: "Copy al cliente", validazione_cliente: "Validazione" };
+function conti(c) {
+  if (tutto()) return { tot: c.domande_tot, fatte: c.domande_fatte, chiesto: (c.chiesto_per?.monica || 0) };
+  const k = io();
+  return { tot: (c.domande_per?.[k] || []).length, fatte: c.fatte_per?.[k] || 0, chiesto: c.chiesto_per?.[k] || 0 };
+}
+function daValutare(c) {
+  const k = io(), cli = c.ha_copy && c.esiti.copy?.esito === "approvata" ? ["copy_cliente"] : [];
+  if (k === "monica") return cli;
+  if (k === "matteo") return c.da_valutare;
+  return [...c.da_valutare, ...cli];
+}
+const daFare = c => { const x = conti(c); return (x.tot - x.fatte) + daValutare(c).filter(s => !c.esiti[s]).length; };
+const finito = c => daFare(c) === 0;
+function titolo(c) {
+  const x = conti(c), niente = !x.tot && !daValutare(c).length;
+  if (io() === "monica") {
+    if (niente) return "Niente per te ora";
+    if (finito(c)) return "Fatto, grazie! Tocca a Whiz.";
+    const n = x.tot - x.fatte;
+    return n ? `${n} ${n === 1 ? "cosa da chiedere" : "cose da chiedere"} al cliente` : "Manda il copy al cliente";
+  }
+  if (niente) return "Niente per te ora";
+  return finito(c) ? "Fatto. Tocca a Whiz." : c.headline;
+}
+function frase(c) {
+  if (io() === "monica") return c.per_monica || "";
+  if (io() === "matteo") return c.per_matteo || "";
+  return [c.per_matteo && "Matteo: " + c.per_matteo, c.per_monica && "Monica: " + c.per_monica].filter(Boolean).join("  ·  ");
+}
 
 /* ---------------- home */
 async function pHome() {
@@ -95,11 +128,16 @@ async function pHome() {
   S.clienti = await api("api/clienti");
   const C = S.clienti;
   let RQ = []; try { RQ = await api("api/richieste"); } catch {}
-  shell(`${richieste(RQ)}<section class="grid" style="margin-top:${RQ.length ? 28 : 40}px">${C.map(card).join("")}</section>`);
+  RQ = RQ.filter(q => tutto() || (q.per || "matteo") === io());
+  const intro = { monica: "Qui trovi solo quello che va chiesto o mandato ai clienti. Quando giri una domanda premi <b>Chiesto</b>; quando il cliente risponde, Sì/No e scrivi la sua risposta.",
+                  matteo: "Qui trovi solo quello che serve a te: ok su liste e copy e i sì/no. Le domande per i clienti le gestisce Monica.",
+                  whiz: "Vista completa: domande per Matteo e per Monica (cliente)." }[io()] || "";
+  const ord = tutto() ? C : [...C].sort((a, b) => (daFare(b) > 0) - (daFare(a) > 0));
+  shell(`<p class="sub intro">${intro}</p>${richieste(RQ)}<section class="grid" style="margin-top:${RQ.length ? 28 : 24}px">${ord.map(card).join("")}</section>`);
   $$(".rq .q").forEach(qel => $$("button", qel).forEach(b => b.onclick = async () => {
     const q = RQ.find(x => x.chiave === qel.dataset.k);
     const nuova = q.risposta?.risposta === b.dataset.r ? "" : b.dataset.r;
-    await api("api/clienti/_vendorius/risposta", { chiave: q.chiave, domanda: q.domanda, risposta: nuova });
+    await api("api/clienti/_vendorius/risposta", { chiave: q.chiave, domanda: q.domanda, risposta: nuova, nota: q.risposta?.nota || "" });
     toast(nuova ? `Salvato: ${nuova === "si" ? "Sì" : "No"}` : "Risposta tolta"); route();
   }));
 }
@@ -107,10 +145,10 @@ async function pHome() {
 function richieste(RQ) {
   if (!RQ.length) return "";
   const f = RQ.filter(q => q.risposta).length, n = RQ.length - f;
-  return `<section class="rq"><div class="rqh"><span class="tag">Da Whiz per Matteo</span><b>${n ? `${n} ${n === 1 ? "cosa che mi serve" : "cose che mi servono"} da te` : "Fatto, grazie!"}</b><span class="cnt">${f} di ${RQ.length}</span></div>
+  return `<section class="rq"><div class="rqh"><span class="tag">Da Whiz per ${tutto() ? "Matteo e Monica" : nomeDi(io())}</span><b>${n ? `${n} ${n === 1 ? "cosa che mi serve" : "cose che mi servono"} da te` : "Fatto, grazie!"}</b><span class="cnt">${f} di ${RQ.length}</span></div>
     <div class="qs">${RQ.map((q, i) => { const r = q.risposta?.risposta;
       return `<div class="q ${r ? "answered" : ""}" data-k="${q.chiave}"><span class="num">${i + 1}</span>
-        <div><h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
+        <div>${tutto() ? `<span class="per">per ${nomeDi(q.per || "matteo")}</span>` : ""}<h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
           ${q.se_si ? `<div class="si"><b>Sì =</b> ${inline(q.se_si)}</div>` : ""}
           ${r ? `<div class="by">${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}</div>` : ""}</div>
         <div class="yn"><button class="si ${r === "si" ? "on" : ""}" data-r="si">SÌ</button><button class="no ${r === "no" ? "on" : ""}" data-r="no">NO</button></div></div>`; }).join("")}</div></section>`;
@@ -118,9 +156,11 @@ function richieste(RQ) {
 function card(c) {
   const done = finito(c);
   const chips = [];
-  if (c.domande_tot) chips.push(`<span class="chip ${c.domande_fatte >= c.domande_tot ? "ok" : ""}">${c.domande_fatte}/${c.domande_tot} sì/no</span>`);
-  for (const s of c.da_valutare) {
-    const e = c.esiti[s]; const nome = s === "lista" ? "Lista" : "Copy";
+  const x = conti(c);
+  if (x.tot) chips.push(`<span class="chip ${x.fatte >= x.tot ? "ok" : ""}">${x.fatte}/${x.tot} ${io() === "monica" ? "risposte cliente" : "sì/no"}</span>`);
+  if (x.chiesto) chips.push(`<span class="chip warn">${x.chiesto} chiest${x.chiesto === 1 ? "a" : "e"}, in attesa</span>`);
+  for (const s of daValutare(c)) {
+    const e = c.esiti[s]; const nome = NOME_SEZ[s] || s;
     chips.push(e ? `<span class="chip ${e.esito === "approvata" ? "ok" : "ko"}">${nome} ${e.esito === "approvata" ? "✓" : "✗"}</span>`
                  : `<span class="chip c1"><span class="dot"></span>${nome}</span>`);
   }
@@ -129,8 +169,8 @@ function card(c) {
     <div class="plate" style="background:${c.logo_bg}"><img src="brand/${c.logo}" alt="${esc(c.nome)}"></div>
     <div class="body">
       <div class="who"><span>${esc(c.nome)}</span><span>${esc(c.aggiornato)}</span></div>
-      <h2>${done ? "Fatto. Tocca a Whiz." : esc(c.headline)}</h2>
-      <p class="why">${esc(c.per_matteo)}</p>
+      <h2>${esc(titolo(c))}</h2>
+      <p class="why">${esc(frase(c))}</p>
       ${sopBar(c.sop)}
       <div class="foot">${chips.join("")}<span class="go">Apri →</span></div>
     </div></a>`;
@@ -144,7 +184,8 @@ async function pCliente(slug, tab) {
   const d = S.det[slug] = await api(`api/clienti/${slug}`);
   setBrand(d);
   const ov = d.overview || {};
-  const tabs = [["overview", "Overview", ov.domande?.length ? `${d.domande_fatte}/${d.domande_tot}` : "", d.domande_fatte >= d.domande_tot ? "ok" : ""],
+  const xc = conti(d);
+  const tabs = [["overview", "Overview", xc.tot ? `${xc.fatte}/${xc.tot}` : "", xc.fatte >= xc.tot ? "ok" : ""],
                 ["lista", "Lista", ...badge(d, "lista")], ["copy", "Copy", ...badge(d, "copy")]];
   if (d.altri.length) tabs.push(["file", "Altri file", String(d.altri.length), ""]);
   tab = tabs.some(t => t[0] === tab) ? tab : "overview";
@@ -154,7 +195,7 @@ async function pCliente(slug, tab) {
     <div class="band">
       <div class="logo" style="background:${d.logo_bg}"><img src="brand/${d.logo}" alt="${esc(d.nome)}"></div>
       <div class="t"><small>${esc(d.nome)} · aggiornato ${esc(d.aggiornato)}</small>
-        <h1>${done ? "Fatto. Tocca a Whiz." : esc(d.headline)}</h1><p>${esc(ov.per_matteo || "")}</p></div>
+        <h1>${esc(titolo(d))}</h1><p>${esc(frase(d))}</p></div>
     </div>
     <div class="steps">${sopBar(d.sop, true)}</div>
     <div class="facts">${ov.obiettivo ? `<span><b>Obiettivo</b> · ${esc(ov.obiettivo)}</span>` : ""}${ov.chi_e ? `<span><b>Chi è</b> · ${esc(ov.chi_e)}</span>` : ""}</div>
@@ -170,6 +211,11 @@ async function pCliente(slug, tab) {
 function badge(d, s) {
   const has = s === "lista" ? d.ha_lista : d.ha_copy;
   if (!has) return ["—", ""];
+  if (io() === "monica") {
+    if (s === "lista") return ["", ""];
+    if (d.esiti.copy?.esito !== "approvata") return ["attesa Matteo", ""];
+    s = "copy_cliente";
+  }
   const e = d.esiti[s];
   if (!e) return ["da valutare", ""];
   return e.esito === "approvata" ? ["approvata", "ok"] : ["non approvata", "ko"];
@@ -179,21 +225,20 @@ function badge(d, s) {
 function tOverview(el, d) {
   const ov = d.overview;
   if (!ov) { el.innerHTML = `<div class="empty"><b>Manca l'overview</b>Nessun file OVERVIEW+INCONSISTENCIES nella cartella.</div>`; return; }
-  const n = ov.domande.length, f = ov.domande.filter(q => q.risposta).length;
-  el.innerHTML = `
-  <section class="blk">
-    <h2 class="h2">Decidi</h2>
+  const ok = q => ["si", "no"].includes(q.risposta?.risposta);
+  const gruppo = (titolo, sub, D) => { const n = D.length, f = D.filter(ok).length;
+    return `<section class="blk"><h2 class="h2">${titolo}</h2>${sub ? `<p class="sub">${sub}</p>` : ""}
     <div class="prog"><span class="bar"><i style="width:${n ? f / n * 100 : 0}%"></i></span><span>${f} di ${n} risposte</span></div>
-    <div class="qs">${ov.domande.map((q, i) => {
-      const r = q.risposta?.risposta;
-      return `<div class="q ${r ? "answered" : ""}" data-k="${q.chiave}">
-        <span class="num">${i + 1}</span>
-        <div><h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
-          ${q.se_si ? `<div class="si"><b>Sì =</b> ${inline(q.se_si)}</div>` : ""}
-          ${r ? `<div class="by">${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}${q.risposta.nota ? ` · ${esc(q.risposta.nota)}` : ""}</div>` : ""}</div>
-        <div class="yn"><button class="si ${r === "si" ? "on" : ""}" data-r="si">SÌ</button><button class="no ${r === "no" ? "on" : ""}" data-r="no">NO</button></div>
-      </div>`; }).join("") || `<div class="empty">Nessuna domanda aperta.</div>`}</div>
-  </section>
+    <div class="qs">${D.map(q => qHtml(q, ov.domande.indexOf(q))).join("") || `<div class="empty">Nessuna domanda aperta.</div>`}</div></section>`; };
+  const dM = ov.domande.filter(q => (q.per || "matteo") === "matteo"), dC = ov.domande.filter(q => q.per === "monica");
+  const subC = "Da chiedere al cliente. <b>Chiesto</b> quando l'hai girata, poi Sì/No e la sua risposta.";
+  let top;
+  if (tutto()) top = (dM.length ? gruppo("Per Matteo", "", dM) : "") + (dC.length ? gruppo("Per Monica · cliente", subC, dC) : "");
+  else if (io() === "monica") top = gruppo("Da chiedere al cliente", subC, dC) +
+    (dM.length ? `<section class="blk">${fold(`Le decide Matteo <span class="chip">${dM.filter(ok).length}/${dM.length}</span>`, `<div class="qs">${dM.map(q => qHtml(q, ov.domande.indexOf(q), true)).join("")}</div>`)}</section>` : "");
+  else top = gruppo("Decidi", "", dM) +
+    (dC.length ? `<section class="blk">${fold(`Domande al cliente (le gestisce Monica) <span class="chip">${dC.filter(ok).length}/${dC.length}</span>`, `<div class="qs">${dC.map(q => qHtml(q, ov.domande.indexOf(q), true)).join("")}</div>`)}</section>` : "");
+  el.innerHTML = `${top}
   <section class="blk">
     <h2 class="h2">In breve</h2><p class="sub">Solo se vuoi il contesto. Le risposte sopra bastano.</p>
     ${ov.punti.length ? `<div class="brief" style="margin-bottom:12px">${ov.punti.map(p => `<div class="row"><b>${inline(p.punto)}</b><span>${inline(p.azione)}</span></div>`).join("")}</div>` : ""}
@@ -204,29 +249,64 @@ function tOverview(el, d) {
     ${ov.regole ? fold("Regole del cliente", md(ov.regole)) : ""}
     ${ov.situazione ? fold("Cronologia", md(ov.situazione)) : ""}
   </section>`;
-  $$(".q", el).forEach(qel => $$("button", qel).forEach(b => b.onclick = async () => {
-    const q = ov.domande.find(x => x.chiave === qel.dataset.k);
-    const nuova = q.risposta?.risposta === b.dataset.r ? "" : b.dataset.r;
-    await api(`api/clienti/${d.slug}/risposta`, { chiave: q.chiave, domanda: q.domanda, risposta: nuova });
-    toast(nuova ? `Salvato: ${nuova === "si" ? "Sì" : "No"}` : "Risposta tolta");
-    delete S.clienti; route();
-  }));
+  $$(".q[data-k]", el).forEach(qel => {
+    const q = ov.domande.find(x => x.chiave === qel.dataset.k), ta = $("textarea", qel);
+    const salva = async (nuova, msg) => {
+      await api(`api/clienti/${d.slug}/risposta`, { chiave: q.chiave, domanda: q.domanda, risposta: nuova, nota: ta ? ta.value.trim() : (q.risposta?.nota || "") });
+      toast(msg); delete S.clienti; route();
+    };
+    $$(".yn button", qel).forEach(b => b.onclick = () => {
+      const nuova = q.risposta?.risposta === b.dataset.r ? "" : b.dataset.r;
+      salva(nuova, nuova ? `Salvato: ${{ si: "Sì", no: "No", chiesto: "chiesto al cliente" }[nuova]}` : "Risposta tolta");
+    });
+    const sv = $(".qn .save", qel);
+    if (sv) sv.onclick = () => salva(q.risposta?.risposta || "chiesto", "Risposta del cliente salvata");
+  });
+}
+/* una domanda: Sì/No; se è per il cliente anche "Chiesto" + la sua risposta. ro = solo lettura */
+function qHtml(q, i, ro) {
+  const r = q.risposta?.risposta, cli = q.per === "monica";
+  const stato = { si: "Sì", no: "No", chiesto: "chiesto al cliente" }[r];
+  const by = r ? `<div class="by">${r === "chiesto" ? "Chiesto al cliente da " : ""}${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}${q.risposta.nota && (ro || !cli) ? ` · ${esc(q.risposta.nota)}` : ""}</div>` : "";
+  const btn = ro ? `<span class="chip ${r === "si" ? "ok" : r === "no" ? "ko" : r ? "warn" : ""}">${stato || "aperta"}</span>`
+    : `<div class="yn">${cli ? `<button class="ch ${r === "chiesto" ? "on" : ""}" data-r="chiesto">CHIESTO</button>` : ""}<button class="si ${r === "si" ? "on" : ""}" data-r="si">SÌ</button><button class="no ${r === "no" ? "on" : ""}" data-r="no">NO</button></div>`;
+  const nota = cli && !ro ? `<div class="qn"><textarea rows="2" placeholder="Risposta del cliente (facoltativa): date, email, elenchi…">${esc(q.risposta?.nota || "")}</textarea><button class="save">Salva risposta</button></div>` : "";
+  return `<div class="q ${r === "chiesto" ? "asked" : r ? "answered" : ""} ${ro ? "ro" : ""}" ${ro ? "" : `data-k="${q.chiave}"`}>
+    <span class="num">${i + 1}</span>
+    <div><h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
+      ${q.se_si ? `<div class="si"><b>Sì =</b> ${inline(q.se_si)}</div>` : ""}${by}${nota}</div>
+    ${btn}</div>`;
 }
 const fold = (t, body, open) => `<details class="fold" ${open ? "open" : ""}><summary>${t}</summary><div class="in md">${body}</div></details>`;
 
 /* ---- verdetto (lista / copy) */
 function verdict(d, sez) {
-  const e = d.esiti[sez]; const L = sez === "lista" ? ["Approvata", "Non approvata", "La lista"] : ["Approvato", "Da rivedere", "Il copy"];
+  const e = d.esiti[sez];
+  const L = { lista: ["Approvata", "Non approvata", "La lista va bene?", "Nota (facoltativa): cosa cambiare, cosa va bene…"],
+              copy: ["Approvato", "Da rivedere", "Il copy va bene?", "Nota (facoltativa): cosa cambiare, cosa va bene…"],
+              copy_cliente: ["Approvato dal cliente", "Da rifare", "Il cliente approva il copy?", "Cosa ha detto il cliente…"] }[sez];
   return `<div class="verdict ${e ? (e.esito === "approvata" ? "ok" : "ko") : ""}" data-sez="${sez}">
-    <div class="lbl">${L[2]} va bene?<small>${e ? `${nomeDi(e.chi)} · ${quando(e.quando)}` : "Un clic. La nota è facoltativa."}</small></div>
+    <div class="lbl">${L[2]}<small>${e ? `${nomeDi(e.chi)} · ${quando(e.quando)}` : sez === "copy_cliente" ? "Matteo l'ha approvato: giralo al cliente e segna qui com'è andata." : "Un clic. La nota è facoltativa."}</small></div>
     <div class="btns"><button class="ap ${e?.esito === "approvata" ? "on" : ""}" data-e="approvata">✓ ${L[0]}</button>
       <button class="na ${e?.esito === "non_approvata" ? "on" : ""}" data-e="non_approvata">✗ ${L[1]}</button></div>
-    <textarea placeholder="Nota (facoltativa): cosa cambiare, cosa va bene…">${esc(e?.nota || "")}</textarea>
+    <textarea placeholder="${L[3]}">${esc(e?.nota || "")}</textarea>
     <button class="save">Salva nota</button>
   </div>`;
 }
+/* stato di un verdetto, solo lettura (per chi non lo decide) */
+function statoRO(d, sez) {
+  const e = d.esiti[sez], nome = NOME_SEZ[sez];
+  const t = e ? (e.esito === "approvata" ? "✓ approvato" : "✗ da rivedere") : sez === "copy_cliente" ? "da mandare al cliente dopo l'ok di Matteo" : "in attesa di Matteo";
+  return `<div class="verdict ro ${e ? (e.esito === "approvata" ? "ok" : "ko") : ""}"><div class="lbl">${nome}: ${t}<small>${e ? `${nomeDi(e.chi)} · ${quando(e.quando)}${e.nota ? " · " + esc(e.nota) : ""}` : ""}</small></div></div>`;
+}
+function verdettiCopy(d) {
+  const k = io(), okM = d.esiti.copy?.esito === "approvata";
+  let h = k === "monica" ? statoRO(d, "copy") : verdict(d, "copy");
+  if (k === "matteo") return h + (d.esiti.copy_cliente ? statoRO(d, "copy_cliente") : "");
+  return h + (okM ? verdict(d, "copy_cliente") : statoRO(d, "copy_cliente"));
+}
 function bindVerdict(el, d) {
-  $$(".verdict", el).forEach(v => {
+  $$(".verdict[data-sez]", el).forEach(v => {
     const sez = v.dataset.sez, ta = $("textarea", v);
     const save = async esito => {
       await api(`api/clienti/${d.slug}/esito`, { sezione: sez, esito, nota: ta.value });
@@ -290,7 +370,7 @@ async function tLista(el, d) {
   const label = c => ({ campagna: "Campagna", company_name: "Azienda", first_name: "Nome", last_name: "Cognome", job_title: "Ruolo", email: "Email", settore: "Settore", icp_colore: "ICP", email_status: "Email verificata", motivo: "Motivo" }[c] || c);
   const camp = facets.find(f => f[0] === "campagna");
 
-  el.innerHTML = `${verdict(d, "lista")}
+  el.innerHTML = `${io() === "monica" ? statoRO(d, "lista") : verdict(d, "lista")}
     <section class="blk">
       <div class="stats">
         <div class="stat"><b>${L.righe.length}</b><span>lead totali</span></div>
@@ -379,7 +459,7 @@ async function tCopy(el, d) {
   const ex = esempio(d, cp, camp);
   const firma = cp.firma || defaultFirma(d);
 
-  el.innerHTML = `${verdict(d, "copy")}
+  el.innerHTML = `${verdettiCopy(d)}
   ${d.copy.length > 1 ? `<div class="camps">${d.copy.map((c, i) => `<button class="camp ${i === st.doc ? "on" : ""}" data-doc="${i}"><b>${esc(c.titolo || c.file)}</b></button>`).join("")}</div>` : ""}
   <div class="copylay">
     <div>

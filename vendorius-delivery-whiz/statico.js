@@ -76,7 +76,12 @@
     const R = st.risposte[slug] || {}, E = st.esiti[slug] || {}, N = st.note[slug] || [];
     if (d.overview) d.overview.domande.forEach(q => q.risposta = R[q.chiave] || null);
     d.esiti = E; d.note = N;
-    d.domande_fatte = d.overview ? d.overview.domande.filter(q => R[q.chiave]).length : 0;
+    const Q = d.overview ? d.overview.domande : [], si = q => ["si", "no"].includes(R[q.chiave]?.risposta);
+    d.domande_fatte = Q.filter(si).length;
+    d.domande_per = {}; d.fatte_per = {}; d.chiesto_per = {};
+    for (const k of ["matteo", "monica"]) { const P = Q.filter(q => (q.per || "matteo") === k);
+      d.domande_per[k] = P.map(q => q.chiave); d.fatte_per[k] = P.filter(si).length;
+      d.chiesto_per[k] = P.filter(q => R[q.chiave]?.risposta === "chiesto").length; }
     d.valutate = d.da_valutare.filter(s => E[s]).length;
     d.note_aperte = N.filter(n => !n.risolta).length;
     return d;
@@ -101,7 +106,7 @@
     if (p[2] === "lista") return ok(D.liste[slug]);
     try {
       if (p[2] === "risposta") {
-        if (body.risposta) { const r = { slug, chiave: body.chiave, domanda: body.domanda, risposta: body.risposta, chi, quando: ora() };
+        if (body.risposta) { const r = { slug, chiave: body.chiave, domanda: body.domanda, risposta: body.risposta, nota: body.nota || "", chi, quando: ora() };
           await scrivi("risposte", r); put.risposte(r); }
         else { await scrivi("risposte", null, { slug, chiave: body.chiave }); del.risposte({ slug, chiave: body.chiave }); }
       } else if (p[2] === "esito") {
