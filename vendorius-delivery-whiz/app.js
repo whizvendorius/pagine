@@ -20,6 +20,7 @@ function toast(t) {
 }
 const quando = s => s ? s.slice(8, 10) + "/" + s.slice(5, 7) + " " + s.slice(11) : "";
 const nomeDi = chi => ({ matteo: "Matteo", whiz: "Whiz", monica: "Monica" })[chi] || chi;
+const firma = chi => `<span class="pers p-${chi}"><i></i>${nomeDi(chi)}</span>`;
 
 /* ---------------- mini markdown (solo quello che serve nei file cliente) */
 function inline(s) {
@@ -155,7 +156,7 @@ function richieste(RQ) {
       return `<div class="q ${r === "si" || r === "no" ? "answered" : ""}" data-k="${q.chiave}"><span class="num">${i + 1}</span>
         <div>${tutto() ? `<span class="per">per ${nomeDi(q.per || "matteo")}</span>` : ""}<h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
           ${q.se_si ? `<div class="si"><b>Sì =</b> ${inline(q.se_si)}</div>` : ""}
-          ${r ? `<div class="by">${r === "nota" ? "Commento di " : ""}${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}</div>` : ""}${q.commento ? boxNota(q, q.commento) : ""}</div>
+          ${r ? `<div class="by">${r === "nota" ? "Commento di " : ""}${firma(q.risposta.chi)} · ${quando(q.risposta.quando)}</div>` : ""}${q.commento ? boxNota(q, q.commento) : ""}</div>
         <div class="yn"><button class="si ${r === "si" ? "on" : ""}" data-r="si">SÌ</button><button class="no ${r === "no" ? "on" : ""}" data-r="no">NO</button></div></div>`; }).join("")}</div></section>`;
 }
 function card(c) {
@@ -273,7 +274,7 @@ function qHtml(q, i, ro) {
   const r = q.risposta?.risposta, cli = q.per === "monica";
   const stato = { si: "Sì", no: "No", chiesto: "chiesto al cliente" }[r];
   const ph = ro ? "" : cli ? "Risposta del cliente (facoltativa): date, email, elenchi…" : COMMENTI[q.chiave];
-  const by = r ? `<div class="by">${r === "chiesto" ? "Chiesto al cliente da " : r === "nota" ? "Commento di " : ""}${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}${q.risposta.nota && !ph ? ` · ${esc(q.risposta.nota)}` : ""}</div>` : "";
+  const by = r ? `<div class="by">${r === "chiesto" ? "Chiesto al cliente da " : r === "nota" ? "Commento di " : ""}${firma(q.risposta.chi)} · ${quando(q.risposta.quando)}${q.risposta.nota && !ph ? ` · ${esc(q.risposta.nota)}` : ""}</div>` : "";
   const btn = ro ? `<span class="chip ${r === "si" ? "ok" : r === "no" ? "ko" : r ? "warn" : ""}">${stato || "aperta"}</span>`
     : `<div class="yn">${cli ? `<button class="ch ${r === "chiesto" ? "on" : ""}" data-r="chiesto">CHIESTO</button>` : ""}<button class="si ${r === "si" ? "on" : ""}" data-r="si">SÌ</button><button class="no ${r === "no" ? "on" : ""}" data-r="no">NO</button></div>`;
   const nota = ph ? boxNota(q, ph) : "";
@@ -325,7 +326,7 @@ function verdict(d, sez) {
               copy: ["Approvato", "Da rivedere", "Il copy va bene?", "Nota (facoltativa): cosa cambiare, cosa va bene…"],
               copy_cliente: ["Approvato dal cliente", "Da rifare", "Il cliente approva il copy?", "Cosa ha detto il cliente…"] }[sez];
   return `<div class="verdict ${e ? (e.esito === "approvata" ? "ok" : "ko") : ""}" data-sez="${sez}">
-    <div class="lbl">${L[2]}<small>${e ? `${nomeDi(e.chi)} · ${quando(e.quando)}` : sez === "copy_cliente" ? "Matteo l'ha approvato: giralo al cliente e segna qui com'è andata." : "Un clic. La nota è facoltativa."}</small></div>
+    <div class="lbl">${L[2]}<small>${e ? `${firma(e.chi)} · ${quando(e.quando)}` : sez === "copy_cliente" ? "Matteo l'ha approvato: giralo al cliente e segna qui com'è andata." : "Un clic. La nota è facoltativa."}</small></div>
     <div class="btns"><button class="ap ${e?.esito === "approvata" ? "on" : ""}" data-e="approvata">✓ ${L[0]}</button>
       <button class="na ${e?.esito === "non_approvata" ? "on" : ""}" data-e="non_approvata">✗ ${L[1]}</button></div>
     <textarea placeholder="${L[3]}">${esc(e?.nota || "")}</textarea>
@@ -336,7 +337,7 @@ function verdict(d, sez) {
 function statoRO(d, sez) {
   const e = d.esiti[sez], nome = NOME_SEZ[sez];
   const t = e ? (e.esito === "approvata" ? "✓ approvato" : "✗ da rivedere") : sez === "copy_cliente" ? "da mandare al cliente dopo l'ok di Matteo" : "in attesa di Matteo";
-  return `<div class="verdict ro ${e ? (e.esito === "approvata" ? "ok" : "ko") : ""}"><div class="lbl">${nome}: ${t}<small>${e ? `${nomeDi(e.chi)} · ${quando(e.quando)}${e.nota ? " · " + esc(e.nota) : ""}` : ""}</small></div></div>`;
+  return `<div class="verdict ro ${e ? (e.esito === "approvata" ? "ok" : "ko") : ""}"><div class="lbl">${nome}: ${t}<small>${e ? `${firma(e.chi)} · ${quando(e.quando)}${e.nota ? " · " + esc(e.nota) : ""}` : ""}</small></div></div>`;
 }
 function verdettiCopy(d) {
   const k = io(), okM = d.esiti.copy?.esito === "approvata";
@@ -363,7 +364,7 @@ function notesFor(d, sez, ancora) {
 function notesHtml(d, sez, ancora, label) {
   const N = notesFor(d, sez, ancora);
   return `<div class="notes" data-sez="${sez}" data-a="${esc(ancora)}" data-l="${esc(label)}">${N.map(n => `
-    <div class="note ${n.risolta ? "res" : ""}"><div class="h"><b>${nomeDi(n.autore)}</b>${quando(n.creato)}
+    <div class="note ${n.risolta ? "res" : ""}"><div class="h"><b>${firma(n.autore)}</b>${quando(n.creato)}
       ${S.me.chi === "whiz" ? `<button class="linkbtn" data-res="${n.id}" data-v="${n.risolta ? 0 : 1}">${n.risolta ? "riapri" : "risolta ✓"}</button>` : ""}</div>${esc(n.testo)}</div>`).join("")}</div>`;
 }
 function bindNotes(el, d) {
