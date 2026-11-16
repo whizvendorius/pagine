@@ -133,7 +133,8 @@ async function pHome() {
   const intro = { monica: "Qui trovi solo quello che va chiesto o mandato ai clienti. Quando giri una domanda premi <b>Chiesto</b>; quando il cliente risponde, Sì/No e scrivi la sua risposta.",
                   matteo: "Qui trovi solo quello che serve a te: ok su liste e copy e i sì/no. Le domande per i clienti le gestisce Monica.",
                   whiz: "Vista completa: domande per Matteo e per Monica (cliente)." }[io()] || "";
-  const ord = tutto() ? C : [...C].sort((a, b) => (daFare(b) > 0) - (daFare(a) > 0));
+  const vuo = c => { const x = conti(c); return !x.tot && !daValutare(c).length; };
+  const ord = tutto() ? C : [...C].sort((a, b) => (vuo(a) - vuo(b)) || ((daFare(b) > 0) - (daFare(a) > 0)));
   shell(`<p class="sub intro">${intro}</p>${richieste(RQ)}<section class="grid" style="margin-top:${RQ.length ? 28 : 24}px">${ord.map(card).join("")}</section>`);
   $$(".rq .q").forEach(qel => {
     const q = RQ.find(x => x.chiave === qel.dataset.k), ta = $("textarea", qel);
@@ -171,7 +172,8 @@ function card(c) {
                  : `<span class="chip c1"><span class="dot"></span>${nome}</span>`);
   }
   if (c.note_aperte) chips.push(`<span class="chip">${c.note_aperte} note</span>`);
-  return `<a class="card ${done ? "done" : ""}" href="#/c/${c.slug}" style="--c1:${c.c1};--c1-soft:${hexA(c.c1, .09)}">
+  const vuota = !tutto() && !x.tot && !daValutare(c).length;
+  return `<a class="card ${done ? "done" : ""} ${vuota ? "vuota" : ""}" href="#/c/${c.slug}" style="--c1:${c.c1};--c1-soft:${hexA(c.c1, .09)}">
     <div class="plate" style="background:${c.logo_bg}"><img src="brand/${c.logo}" alt="${esc(c.nome)}"></div>
     <div class="body">
       <div class="who"><span>${esc(c.nome)}</span><span>${esc(c.aggiornato)}</span></div>

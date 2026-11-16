@@ -310,3 +310,7 @@ table.leads tr.noted td:first-child{box-shadow:inset 3px 0 var(--c1)}
 .pers{display:inline-flex;align-items:center;gap:5px;font-weight:600}
 .pers i{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
 .p-matteo{color:#1f5fbf}.p-monica{color:#b0367a}.p-whiz{color:#2f7a3a}
+/* niente per te ora: carta spenta, titolo barrato */
+.card.vuota{filter:grayscale(1);opacity:.45}
+.card.vuota h2{text-decoration:line-through;color:var(--ink3)}
+.card.vuota:hover{opacity:.7}
