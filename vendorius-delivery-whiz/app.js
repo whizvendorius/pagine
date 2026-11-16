@@ -134,23 +134,28 @@ async function pHome() {
                   whiz: "Vista completa: domande per Matteo e per Monica (cliente)." }[io()] || "";
   const ord = tutto() ? C : [...C].sort((a, b) => (daFare(b) > 0) - (daFare(a) > 0));
   shell(`<p class="sub intro">${intro}</p>${richieste(RQ)}<section class="grid" style="margin-top:${RQ.length ? 28 : 24}px">${ord.map(card).join("")}</section>`);
-  $$(".rq .q").forEach(qel => $$("button", qel).forEach(b => b.onclick = async () => {
-    const q = RQ.find(x => x.chiave === qel.dataset.k);
-    const nuova = q.risposta?.risposta === b.dataset.r ? "" : b.dataset.r;
-    await api("api/clienti/_vendorius/risposta", { chiave: q.chiave, domanda: q.domanda, risposta: nuova, nota: q.risposta?.nota || "" });
-    toast(nuova ? `Salvato: ${nuova === "si" ? "Sì" : "No"}` : "Risposta tolta"); route();
-  }));
+  $$(".rq .q").forEach(qel => {
+    const q = RQ.find(x => x.chiave === qel.dataset.k), ta = $("textarea", qel);
+    $$(".yn button", qel).forEach(b => b.onclick = async () => {
+      const nota = ta ? ta.value.trim() : (q.risposta?.nota || "");
+      let nuova = q.risposta?.risposta === b.dataset.r ? "" : b.dataset.r;
+      if (!nuova && nota) nuova = "nota";
+      await api("api/clienti/_vendorius/risposta", { chiave: q.chiave, domanda: q.domanda, risposta: nuova, nota });
+      toast(nuova && nuova !== "nota" ? `Salvato: ${nuova === "si" ? "Sì" : "No"}` : "Risposta tolta"); route();
+    });
+    autoNota(qel, "_vendorius", q, "nota");
+  });
 }
 /* richieste generali a Matteo (non legate a un cliente), in evidenza in cima */
 function richieste(RQ) {
   if (!RQ.length) return "";
-  const f = RQ.filter(q => q.risposta).length, n = RQ.length - f;
+  const f = RQ.filter(q => ["si", "no"].includes(q.risposta?.risposta)).length, n = RQ.length - f;
   return `<section class="rq"><div class="rqh"><span class="tag">Da Whiz per ${tutto() ? "Matteo e Monica" : nomeDi(io())}</span>${n ? "" : "<b>Fatto, grazie!</b>"}</div>
     <div class="qs">${RQ.map((q, i) => { const r = q.risposta?.risposta;
-      return `<div class="q ${r ? "answered" : ""}" data-k="${q.chiave}"><span class="num">${i + 1}</span>
+      return `<div class="q ${r === "si" || r === "no" ? "answered" : ""}" data-k="${q.chiave}"><span class="num">${i + 1}</span>
         <div>${tutto() ? `<span class="per">per ${nomeDi(q.per || "matteo")}</span>` : ""}<h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
           ${q.se_si ? `<div class="si"><b>Sì =</b> ${inline(q.se_si)}</div>` : ""}
-          ${r ? `<div class="by">${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}</div>` : ""}</div>
+          ${r ? `<div class="by">${r === "nota" ? "Commento di " : ""}${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}</div>` : ""}${q.commento ? boxNota(q, q.commento) : ""}</div>
         <div class="yn"><button class="si ${r === "si" ? "on" : ""}" data-r="si">SÌ</button><button class="no ${r === "no" ? "on" : ""}" data-r="no">NO</button></div></div>`; }).join("")}</div></section>`;
 }
 function card(c) {
@@ -256,26 +261,60 @@ function tOverview(el, d) {
       toast(msg); delete S.clienti; route();
     };
     $$(".yn button", qel).forEach(b => b.onclick = () => {
-      const nuova = q.risposta?.risposta === b.dataset.r ? "" : b.dataset.r;
+      let nuova = q.risposta?.risposta === b.dataset.r ? "" : b.dataset.r;
+      if (!nuova && ta && ta.value.trim()) nuova = q.per === "monica" ? "chiesto" : "nota";
       salva(nuova, nuova ? `Salvato: ${{ si: "Sì", no: "No", chiesto: "chiesto al cliente" }[nuova]}` : "Risposta tolta");
     });
-    const sv = $(".qn .save", qel);
-    if (sv) sv.onclick = () => salva(q.risposta?.risposta || "chiesto", "Risposta del cliente salvata");
+    autoNota(qel, d.slug, q, q.per === "monica" ? "chiesto" : "nota");
   });
 }
 /* una domanda: Sì/No; se è per il cliente anche "Chiesto" + la sua risposta. ro = solo lettura */
 function qHtml(q, i, ro) {
   const r = q.risposta?.risposta, cli = q.per === "monica";
   const stato = { si: "Sì", no: "No", chiesto: "chiesto al cliente" }[r];
-  const by = r ? `<div class="by">${r === "chiesto" ? "Chiesto al cliente da " : ""}${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}${q.risposta.nota && (ro || !cli) ? ` · ${esc(q.risposta.nota)}` : ""}</div>` : "";
+  const ph = ro ? "" : cli ? "Risposta del cliente (facoltativa): date, email, elenchi…" : COMMENTI[q.chiave];
+  const by = r ? `<div class="by">${r === "chiesto" ? "Chiesto al cliente da " : r === "nota" ? "Commento di " : ""}${nomeDi(q.risposta.chi)} · ${quando(q.risposta.quando)}${q.risposta.nota && !ph ? ` · ${esc(q.risposta.nota)}` : ""}</div>` : "";
   const btn = ro ? `<span class="chip ${r === "si" ? "ok" : r === "no" ? "ko" : r ? "warn" : ""}">${stato || "aperta"}</span>`
     : `<div class="yn">${cli ? `<button class="ch ${r === "chiesto" ? "on" : ""}" data-r="chiesto">CHIESTO</button>` : ""}<button class="si ${r === "si" ? "on" : ""}" data-r="si">SÌ</button><button class="no ${r === "no" ? "on" : ""}" data-r="no">NO</button></div>`;
-  const nota = cli && !ro ? `<div class="qn"><textarea rows="2" placeholder="Risposta del cliente (facoltativa): date, email, elenchi…">${esc(q.risposta?.nota || "")}</textarea><button class="save">Salva risposta</button></div>` : "";
-  return `<div class="q ${r === "chiesto" ? "asked" : r ? "answered" : ""} ${ro ? "ro" : ""}" ${ro ? "" : `data-k="${q.chiave}"`}>
+  const nota = ph ? boxNota(q, ph) : "";
+  return `<div class="q ${r === "chiesto" ? "asked" : r === "si" || r === "no" ? "answered" : ""} ${ro ? "ro" : ""}" ${ro ? "" : `data-k="${q.chiave}"`}>
     <span class="num">${i + 1}</span>
     <div><h3>${inline(q.domanda)}</h3>${q.perche ? `<p>${inline(q.perche)}</p>` : ""}
       ${q.se_si ? `<div class="si"><b>Sì =</b> ${inline(q.se_si)}</div>` : ""}${by}${nota}</div>
     ${btn}</div>`;
+}
+/* domande di Matteo che chiedono anche due parole oltre al Sì/No (chiave = id della domanda) */
+const COMMENTI = {
+  "29a2f3081b79": "Se Sì: incolla qui il link Calendly",
+  "cd167bcffaf7": "Se Sì: scrivi qui dove le trovo (link o nome del file)",
+  "d2c97d6eae71": "Scrivi qui dove sono: Smartlead, Drive o entrambi",
+  "97b8010a1640": "Commento: es. quanti giorni aspettiamo prima di partire",
+  "f5f8c3c4dcb7": "Se No: quali casi uso",
+  "09df5b8eb501": "Se No: che angolo preferisci",
+  "a6ff53647110": "Se No: cosa cambio",
+  "425fb05ac378": "Se No: come allargo (es. altre regioni, aziende più piccole)",
+};
+const boxNota = (q, ph) => `<div class="qn"><textarea rows="2" placeholder="${esc(ph)}">${esc(q.risposta?.nota || "")}</textarea><span class="auto">Si salva da solo</span></div>`;
+/* scrive il commento mentre si digita (pausa di 0,7 s o uscita dal box): chi guarda lo vede subito */
+function autoNota(qel, slug, q, vuota) {
+  const ta = $(".qn textarea", qel), st = $(".qn .auto", qel);
+  if (!ta) return;
+  let t = null, ultimo = (q.risposta?.nota || "").trim();
+  const invia = async () => {
+    clearTimeout(t);
+    const nota = ta.value.trim();
+    if (nota === ultimo) return;
+    const r = q.risposta?.risposta;
+    const risposta = r && r !== vuota ? r : nota ? vuota : "";
+    st.textContent = "Salvo…";
+    try {
+      await api(`api/clienti/${slug}/risposta`, { chiave: q.chiave, domanda: q.domanda, risposta, nota });
+      ultimo = nota; q.risposta = risposta ? { ...(q.risposta || {}), risposta, nota, chi: io(), quando: "" } : null;
+      st.textContent = "Salvato ✓";
+    } catch { st.textContent = "Non salvato, riprova"; }
+  };
+  ta.addEventListener("input", () => { st.textContent = "…"; clearTimeout(t); t = setTimeout(invia, 700); });
+  ta.addEventListener("blur", invia);
 }
 const fold = (t, body, open) => `<details class="fold" ${open ? "open" : ""}><summary>${t}</summary><div class="in md">${body}</div></details>`;
 
