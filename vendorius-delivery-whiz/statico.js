@@ -10,8 +10,8 @@
   if (!NOMI[chi]) chi = C.chi_default || "matteo";
   const sb = window.supabase.createClient(C.url, C.anon);
   const st = { risposte: {}, esiti: {}, note: {} };
-  const ora = () => { const d = new Date(), p = n => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+  /* ora sempre di Milano, anche se chi clicca è in un altro fuso */
+  const ora = () => new Date().toLocaleString("sv-SE", { timeZone: "Europe/Rome", hour12: false }).slice(0, 16);
 
   const put = {
     risposte: r => (st.risposte[r.slug] ||= {})[r.chiave] = r,
