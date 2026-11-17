@@ -134,8 +134,11 @@ async function pHome() {
                   matteo: "Qui trovi solo quello che serve a te: ok su liste e copy e i sì/no. Le domande per i clienti le gestisce Monica.",
                   whiz: "Vista completa: domande per Matteo e per Monica (cliente)." }[io()] || "";
   const vuo = c => { const x = conti(c); return !x.tot && !daValutare(c).length; };
-  const ord = tutto() ? C : [...C].sort((a, b) => (vuo(a) - vuo(b)) || ((daFare(b) > 0) - (daFare(a) > 0)));
-  shell(`<p class="sub intro">${intro}</p>${richieste(RQ)}<section class="grid" style="margin-top:${RQ.length ? 28 : 24}px">${ord.map(card).join("")}</section>`);
+  const pr = c => c.ha_copy ? (c.ha_lista ? 0 : 1) : 2;  /* 0 lista+copy, 1 solo copy, 2 in lavorazione */
+  const ord0 = tutto() ? C : [...C].sort((a, b) => (vuo(a) - vuo(b)) || ((daFare(b) > 0) - (daFare(a) > 0)));
+  const ord = [...ord0].sort((a, b) => pr(a) - pr(b));
+  const pronti = ord.filter(c => pr(c) < 2), inCorso = ord.filter(c => pr(c) === 2);
+  shell(`<p class="sub intro">${intro}</p>${richieste(RQ)}<h2 class="sez-h" style="margin:${RQ.length ? 28 : 24}px 0 12px">Pronti: lista e copy da approvare</h2><section class="grid">${pronti.map(card).join("")}</section>${inCorso.length ? `<h2 class="sez-h" style="margin:40px 0 4px">In lavorazione</h2><p class="sub" style="margin:0 0 12px">Lista e copy non ancora finiti: per ora non serve guardarli.</p><section class="grid" style="opacity:.55">${inCorso.map(card).join("")}</section>` : ""}`);
   $$(".rq .q").forEach(qel => {
     const q = RQ.find(x => x.chiave === qel.dataset.k), ta = $("textarea", qel);
     $$(".yn button", qel).forEach(b => b.onclick = async () => {
