@@ -137,8 +137,10 @@ async function pHome() {
   const pr = c => c.ha_copy ? (c.ha_lista ? 0 : 1) : 2;  /* 0 lista+copy, 1 solo copy, 2 in lavorazione */
   const ord0 = tutto() ? C : [...C].sort((a, b) => (vuo(a) - vuo(b)) || ((daFare(b) > 0) - (daFare(a) > 0)));
   const ord = [...ord0].sort((a, b) => pr(a) - pr(b));
-  const pronti = ord.filter(c => pr(c) < 2), inCorso = ord.filter(c => pr(c) === 2);
-  shell(`<p class="sub intro">${intro}</p>${richieste(RQ)}<h2 class="sez-h" style="margin:${RQ.length ? 28 : 24}px 0 12px">Pronti: lista e copy da approvare</h2><section class="grid">${pronti.map(card).join("")}</section>${inCorso.length ? `<h2 class="sez-h" style="margin:40px 0 4px">In lavorazione</h2><p class="sub" style="margin:0 0 12px">Lista e copy non ancora finiti: per ora non serve guardarli.</p><section class="grid" style="opacity:.55">${inCorso.map(card).join("")}</section>` : ""}`);
+  const attesa = c => (c.sop || []).some(x => x.nome === "Validazione" && x.stato === "ora");  /* aspetta risposte del cliente via Monica */
+  const pronti = ord.filter(c => pr(c) < 2), inCorso = ord.filter(c => pr(c) === 2 && !attesa(c)), inAttesa = ord.filter(c => pr(c) === 2 && attesa(c));
+  const blocco = (t, sub, L) => L.length ? `<h2 class="sez-h" style="margin:40px 0 4px">${t}</h2><p class="sub" style="margin:0 0 12px">${sub}</p><section class="grid" style="opacity:.55">${L.map(card).join("")}</section>` : "";
+  shell(`<p class="sub intro">${intro}</p>${richieste(RQ)}<h2 class="sez-h" style="margin:${RQ.length ? 28 : 24}px 0 12px">Pronti: lista e copy da approvare</h2><section class="grid">${pronti.map(card).join("")}</section>${blocco("In lavorazione da Whiz", "Lista e copy in costruzione: per ora non serve guardarli.", inCorso)}${blocco("In attesa del cliente", "Aspettiamo le risposte del cliente (tramite Monica) prima di andare avanti.", inAttesa)}`);
   $$(".rq .q").forEach(qel => {
     const q = RQ.find(x => x.chiave === qel.dataset.k), ta = $("textarea", qel);
     $$(".yn button", qel).forEach(b => b.onclick = async () => {
